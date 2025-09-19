@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Acres & Guntas — Mobile App</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root{--accent:#2f8f4a;--muted:#6b7280}
+    body{font-family:Arial,Helvetica,sans-serif;margin:12px;background:#f4f6f8;color:#0b1220}
+    table{width:100%;border-collapse:collapse;background:white}
+    th,td{padding:6px;border:1px solid #e6eef0;text-align:center}
+    th{background:var(--accent);color:#fff}
+    input[type=number]{width:80px;padding:6px;border-radius:6px;border:1px solid #d1d5db}
+    button{padding:6px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer}
+    .totals{background:#edf7ee;font-weight:700}
+  </style>
+</head>
+<body>
+  <h2>Acres & Guntas — Mobile App</h2>
+  <div style="margin-bottom:10px">
+    <button id="calcBtn">Calculate All</button>
+    <button id="clearBtn">Clear All</button>
+    <button id="addRowBtn">Add Row</button>
+    <button id="exportCsvBtn">Export CSV</button>
+    <label style="margin-left:8px">
+      <input type="file" id="importCsv" style="display:none"> Import CSV
+    </label>
+  </div>
+
+  <table id="table">
+    <thead>
+      <tr>
+        <th>#</th><th>Acres</th><th>Guntas</th>
+        <th>Total (Acres)</th><th>Converted</th>
+        <th>Sqft</th><th>m²</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+    <tfoot>
+      <tr class="totals">
+        <td>Total</td>
+        <td id="sumAcres">-</td>
+        <td id="sumGuntas">-</td>
+        <td id="sumTotal">-</td>
+        <td id="sumConverted">-</td>
+        <td id="sumSqft">-</td>
+        <td id="sumSqm">-</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+
+<script>
+const GUNTAS_PER_ACRE=40, SQFT_PER_ACRE=43560, SQM_PER_ACRE=4046.86;
+let rows=Array.from({length:20},()=>({acres:'',guntas:''}));
+const tbody=document.getElementById('tbody');
+
+function render(){
+  tbody.innerHTML='';
+  rows.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td>${i+1}</td>
+      <td><input class="inp-acres" data-i="${i}" type="number" step="any" min="0" value="${r.acres||''}"></td>
+      <td><input class="inp-guntas" data-i="${i}" type="number" step="any" min="0" value="${r.guntas||''}"></td>
+      <td id="total${i}">-</td><td id="conv${i}">-</td><td id="sqft${i}">-</td><td id="sqm${i}">-</td>
+      <td><button class="remove" data-i="${i}">X</button></td>`;
+    tbody.appendChild(tr);
+  });
+  document.querySelectorAll('.inp-acres,.inp-guntas').forEach(inp=>inp.addEventListener('input',onInput));
+  document.querySelectorAll('.remove').forEach(b=>b.addEventListener('click',onRemove));
+}
+
+function onInput(e){const i=+e.target.dataset.i;if(e.target.classList.contains('inp-acres'))rows[i].acres=e.target.value;else rows[i].guntas=e.target.value;save();}
+function onRemove(e){const i=+e.target.dataset.i;rows.splice(i,1);save();render();calculateAll();}
+function addRow(){rows.push({acres:'',guntas:''});save();render();}
+function save(){localStorage.setItem('ag_rows',JSON.stringify(rows));}
+function calcRow(i){
+  const acres=parseFloat(rows[i].acres)||0, guntas=parseFloat(rows[i].guntas)||0;
+  const total=acres+(guntas/GUNTAS_PER_ACRE);
+  const whole=Math.floor(total); const remG=Math.round((total-whole)*GUNTAS_PER_ACRE);
+  const sqft=total*SQFT_PER_ACRE; const sqm=total*SQM_PER_ACRE;
+  document.getElementById(`total${i}`).innerText=total.toFixed(4);
+  document.getElementById(`conv${i}`).innerText=`${whole} Acre(s) ${remG} Gunta(s)`;
+  document.getElementById(`sqft${i}`).innerText=sqft.toFixed(2);
+  document.getElementById(`sqm${i}`).innerText=sqm.toFixed(2);
+  return {total,sqft,sqm,acres,guntas};
+}
+function calculateAll(){
+  let sumA=0,sumG=0,sumT=0,sumSq=0,sumSm=0;
+  rows.forEach((r,i)=>{const res=calcRow(i);sumA+=res.acres;sumG+=res.guntas;sumT+=res.total;sumSq+=res.sqft;sumSm+=res.sqm;});
+  document.getElementById('sumAcres').innerText=sumA.toFixed(4);
+  document.getElementById('sumGuntas').innerText=sumG.toFixed(2);
+  document.getElementById('sumTotal').innerText=sumT.toFixed(4);
+  const whole=Math.floor(sumT);const guntasTotal=Math.round((sumT-whole)*GUNTAS_PER_ACRE);
+  document.getElementById('sumConverted').innerText=`${whole} Acre(s) ${guntasTotal} Gunta(s)`;
+  document.getElementById('sumSqft').innerText=sumSq.toFixed(2);
+  document.getElementById('sumSqm').innerText=sumSm.toFixed(2);
+  save();
+}
+
+document.getElementById('calcBtn').addEventListener('click',calculateAll);
+document.getElementById('clearBtn').addEventListener('click',()=>{if(confirm('Clear all?')){rows=Array.from({length:20},()=>({acres:'',guntas:''}));save();render();calculateAll();}});
+document.getElementById('addRowBtn').addEventListener('click',()=>{addRow();calculateAll();});
+document.getElementById('exportCsvBtn').addEventListener('click',()=>{
+  let csv='row,acres,guntas,total_acres,converted,sqft,sqm\\n';
+  rows.forEach((r,i)=>{const res=calcRow(i);csv+=[i+1,r.acres||0,r.guntas||0,res.total.toFixed(4),`${Math.floor(res.total)}A ${Math.round((res.total-Math.floor(res.total))*GUNTAS_PER_ACRE)}G`,res.sqft.toFixed(2),res.sqm.toFixed(2)].join(',')+'\\n';});
+  const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='acres_guntas.csv';a.click();URL.revokeObjectURL(url);
+});
+document.getElementById('importCsv').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=function(ev){const lines=ev.target.result.split(/\\r?\\n/).filter(Boolean).slice(1);const newRows=[];lines.forEach(line=>{const c=line.split(',');if(c.length>=3){newRows.push({acres:c[1].trim(),guntas:c[2].trim()});}});if(newRows.length){rows=newRows;save();render();calculateAll();}};
+  r.readAsText(f);
+});
+
+(function(){const ls=localStorage.getItem('ag_rows');if(ls)rows=JSON.parse(ls);render();calculateAll();if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>console.log('sw failed'));}})();
+</script>
+</body>
+</html>
